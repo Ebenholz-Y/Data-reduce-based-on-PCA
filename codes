@@ -1,0 +1,79 @@
+# -*- coding: utf-8 -*-
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_wine
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+# 数据加载与预处理
+data = load_wine()
+X, y = data.data, data.target
+feature_names = data.feature_names
+
+# 标准化处理
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# PCA降维（保留95%方差）
+pca = PCA(n_components=0.95, random_state=42)
+X_pca = pca.fit_transform(X_scaled)
+print(f"PCA保留维度: {X_pca.shape[1]}")  # 输出10
+
+# 特征重要性分析
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+rf.fit(X_scaled, y)
+importance = rf.feature_importances_
+selected_idx = np.argsort(importance)[-5:]  # 选择Top5特征
+X_selected = X_scaled[:, selected_idx]
+
+# PCA+特征选择组合方法
+rf_pca = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_pca.fit(X_pca, y)
+pca_importance = rf_pca.feature_importances_
+selected_pca_idx = np.argsort(pca_importance)[-5:]  # PCA空间选Top5
+X_combined = X_pca[:, selected_pca_idx]
+
+# 性能评估函数
+def evaluate_model(X_data, y_data, method_name):
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    scores = cross_val_score(model, X_data, y_data, cv=5)
+    print(f"{method_name:20} | 准确率: {scores.mean():.3f} | 维度: {X_data.shape[1]}")
+
+# 对比实验结果
+print("\n方法                 | 准确率   | 维度")
+print("-----------------------------------------")
+evaluate_model(X_scaled, y, "原始数据")
+evaluate_model(X_pca, y, "PCA")
+evaluate_model(X_selected, y, "特征选择")
+evaluate_model(X_combined, y, "PCA+特征选择")
+
+# 可视化设置
+plt.figure(figsize=(15,5))
+
+# PCA投影可视化
+plt.subplot(131)
+for target in np.unique(y):
+    plt.scatter(X_pca[y==target,0], X_pca[y==target,1], label=f'Class {target}')
+plt.xlabel('PC1 (%.2f%%)' % (pca.explained_variance_ratio_[0]*100))
+plt.ylabel('PC2 (%.2f%%)' % (pca.explained_variance_ratio_[1]*100))
+plt.title('PCA投影分布')
+plt.legend()
+
+# 特征重要性可视化
+plt.subplot(132)
+plt.barh(range(len(importance)), importance[selected_idx], 
+        tick_label=np.array(feature_names)[selected_idx])
+plt.title('Top5原始特征重要性')
+plt.xlabel('Importance Score')
+
+# 组合方法特征重要性
+plt.subplot(133)
+plt.barh(range(5), pca_importance[selected_pca_idx])
+plt.title('Top5主成分重要性')
+plt.xlabel('Importance Score')
+
+plt.tight_layout()
+plt.savefig('result_visualization.png', dpi=300)
+plt.show()
